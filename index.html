@@ -73,6 +73,7 @@ const sfx = {
   item: () => { beep(900, 0.1, 'sine', 0.3); setTimeout(() => beep(1200, 0.12, 'sine', 0.3), 80); },
   dead: () => [200, 155, 110].forEach((f, i) => setTimeout(() => beep(f, 0.22, 'sawtooth', 0.35), i * 140)),
   hi:   () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.12), i * 90)),
+  milestone: () => [660, 880].forEach((f, i) => setTimeout(() => beep(f, 0.1, 'square', 0.2), i * 80)),
 };
 
 // ─── Matrix Rain ─────────────────────────────────────────────────────────────
@@ -194,6 +195,7 @@ function newGame() {
     isNewHi: false,
     hurt: 0,                 // countdown for damage flash
     particles: [],
+    milestone: null,         // { text, life }
     over: false,
   };
 }
@@ -220,6 +222,12 @@ function doClimb(key1) {
       if (G.lives < 3) { G.lives++; }
       sfx.item();
       spawnParticles(G.particles, CX, STEP_Y - P_R * 2, COL.yellow, 14);
+    }
+
+    // Milestone every 100 steps
+    if (G.score % 100 === 0) {
+      G.milestone = { text: `${G.score} STEPS!`, life: 1.0 };
+      sfx.milestone();
     }
 
     // Reset timer
@@ -409,6 +417,23 @@ function drawGameplay() {
   drawPlayer();
   drawParticles(G.particles);
   drawHUD();
+  drawMilestone();
+}
+
+function drawMilestone() {
+  if (!G.milestone || G.milestone.life <= 0) return;
+  const m = G.milestone;
+  const alpha = Math.min(1, m.life * 3);   // quick fade-in, slow fade-out
+  const rise = (1 - m.life) * 30;          // float upward
+  cx.save();
+  cx.globalAlpha = alpha;
+  cx.textAlign = 'center';
+  cx.font = 'bold 26px monospace';
+  cx.shadowColor = COL.bright;
+  cx.shadowBlur = 18;
+  cx.fillStyle = COL.bright;
+  cx.fillText(m.text, CX, STEP_Y - 80 - rise);
+  cx.restore();
 }
 
 function drawTitle() {
@@ -540,6 +565,7 @@ function loop(t) {
     G.timeLeft -= dt;
     if (G.timeLeft <= 0) { G.timeLeft = 0; triggerGameOver(); }
     if (G.hurt > 0) G.hurt -= dt;
+    if (G.milestone) { G.milestone.life -= dt * 0.7; }
     updateParticles(G.particles, dt);
   } else {
     updateParticles(G.particles, dt);
