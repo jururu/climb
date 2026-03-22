@@ -33,7 +33,7 @@ canvas { display: block; }
 </head>
 <body>
 <canvas id="c"></canvas>
-<button id="toggleOrange">TURN HINT: ON</button>
+<button id="toggleOrange">TURN HINT: OFF</button>
 <script>
 'use strict';
 
@@ -190,7 +190,7 @@ function drawParticles(parts) {
 
 // ─── Game State ──────────────────────────────────────────────────────────────
 let G = null; // null = title screen
-let showOrange = true; // toggle for turn-step highlight
+let showOrange = false; // toggle for turn-step highlight
 
 function newGame() {
   const steps = [];
@@ -430,8 +430,9 @@ function drawGameplay() {
       if (pb.y < H + 60) drawConnector(p.x, p.y, pb.x, pb.y);
     }
     // needsTurn: orange if, while standing on step i, the next step requires TURN
+    // applies to past steps too (stay orange after passing)
     const facingOnStep = i === G.cur ? G.facing : G.steps[i].dir;
-    const needsTurn = i >= G.cur && G.steps[i + 1] && G.steps[i + 1].dir !== facingOnStep;
+    const needsTurn = i > 0 && G.steps[i + 1] && G.steps[i + 1].dir !== facingOnStep;
     drawStep(p.x, p.y, i === G.cur, G.steps[i].hasItem, G.steps[i].taken, needsTurn);
   }
 
@@ -600,12 +601,13 @@ function loop(t) {
 requestAnimationFrame(loop);
 
 const btn = document.getElementById('toggleOrange');
-btn.addEventListener('click', () => {
-  showOrange = !showOrange;
+function updateBtn() {
   btn.textContent = `TURN HINT: ${showOrange ? 'ON' : 'OFF'}`;
   btn.style.color = showOrange ? '#ff9900' : '#004d18';
   btn.style.borderColor = showOrange ? '#ff9900' : '#004d18';
-});
+}
+updateBtn(); // apply initial OFF state
+btn.addEventListener('click', () => { showOrange = !showOrange; updateBtn(); });
 </script>
 </body>
 </html>
