@@ -265,15 +265,18 @@ function drawStep(x, y, isCurrent, hasItem, taken) {
   if (hasItem && !taken) {
     cx.save();
     cx.shadowColor = COL.yellow;
-    cx.shadowBlur = 14;
+    cx.shadowBlur = 20;
     cx.fillStyle = COL.yellow;
     cx.beginPath();
-    cx.arc(x, y - 14, 8, 0, Math.PI * 2);
+    cx.arc(x, y - 20, 14, 0, Math.PI * 2);
     cx.fill();
-    cx.fillStyle = '#000';
-    cx.font = 'bold 11px monospace';
+    cx.shadowBlur = 0;
+    cx.fillStyle = '#cc0000';
+    cx.font = 'bold 16px sans-serif';
     cx.textAlign = 'center';
-    cx.fillText('♥', x, y - 10);
+    cx.textBaseline = 'middle';
+    cx.fillText('♡', x, y - 20);
+    cx.textBaseline = 'alphabetic';
     cx.restore();
   }
 }
