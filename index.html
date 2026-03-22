@@ -17,10 +17,22 @@ body {
   overflow: hidden;
 }
 canvas { display: block; }
+#toggleOrange {
+  margin-top: 10px;
+  padding: 6px 18px;
+  background: #001a08;
+  color: #ff9900;
+  border: 1px solid #ff9900;
+  font: 13px monospace;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+#toggleOrange:hover { background: #1a0800; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<button id="toggleOrange">TURN HINT: ON</button>
 <script>
 'use strict';
 
@@ -177,6 +189,7 @@ function drawParticles(parts) {
 
 // ─── Game State ──────────────────────────────────────────────────────────────
 let G = null; // null = title screen
+let showOrange = true; // toggle for turn-step highlight
 
 function newGame() {
   const steps = [];
@@ -258,15 +271,18 @@ function triggerGameOver() {
 
 // ─── Draw Functions ───────────────────────────────────────────────────────────
 function drawStep(x, y, isCurrent, hasItem, taken, needsTurn) {
-  const col = isCurrent ? COL.bright : needsTurn ? '#ff9900' : COL.green;
-  const fillCol = isCurrent ? COL.dim : needsTurn ? '#1a0800' : COL.dark;
+  const orange = needsTurn && showOrange;
+  const col      = orange ? '#ff9900' : isCurrent ? COL.bright : COL.green;
+  const fillCol  = orange ? '#1a0800' : isCurrent ? COL.dim    : COL.dark;
+  const blur     = isCurrent ? 22 : orange ? 12 : 7;
+  const lw       = (isCurrent || orange) ? 2 : 1;
   cx.save();
   cx.shadowColor = col;
-  cx.shadowBlur = isCurrent ? 22 : needsTurn ? 12 : 7;
+  cx.shadowBlur = blur;
   cx.fillStyle = fillCol;
   cx.fillRect(x - STEP_W / 2, y, STEP_W, STEP_H);
   cx.strokeStyle = col;
-  cx.lineWidth = isCurrent ? 2 : needsTurn ? 2 : 1;
+  cx.lineWidth = lw;
   cx.strokeRect(x - STEP_W / 2, y, STEP_W, STEP_H);
   cx.restore();
 
@@ -579,6 +595,14 @@ function loop(t) {
   if (G.over) drawGameOver();
 }
 requestAnimationFrame(loop);
+
+const btn = document.getElementById('toggleOrange');
+btn.addEventListener('click', () => {
+  showOrange = !showOrange;
+  btn.textContent = `TURN HINT: ${showOrange ? 'ON' : 'OFF'}`;
+  btn.style.color = showOrange ? '#ff9900' : '#004d18';
+  btn.style.borderColor = showOrange ? '#ff9900' : '#004d18';
+});
 </script>
 </body>
 </html>
