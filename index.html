@@ -257,15 +257,16 @@ function triggerGameOver() {
 }
 
 // ─── Draw Functions ───────────────────────────────────────────────────────────
-function drawStep(x, y, isCurrent, hasItem, taken) {
-  const col = isCurrent ? COL.bright : COL.green;
+function drawStep(x, y, isCurrent, hasItem, taken, needsTurn) {
+  const col = isCurrent ? COL.bright : needsTurn ? '#ff9900' : COL.green;
+  const fillCol = isCurrent ? COL.dim : needsTurn ? '#1a0800' : COL.dark;
   cx.save();
   cx.shadowColor = col;
-  cx.shadowBlur = isCurrent ? 22 : 7;
-  cx.fillStyle = isCurrent ? COL.dim : COL.dark;
+  cx.shadowBlur = isCurrent ? 22 : needsTurn ? 12 : 7;
+  cx.fillStyle = fillCol;
   cx.fillRect(x - STEP_W / 2, y, STEP_W, STEP_H);
   cx.strokeStyle = col;
-  cx.lineWidth = isCurrent ? 2 : 1;
+  cx.lineWidth = isCurrent ? 2 : needsTurn ? 2 : 1;
   cx.strokeRect(x - STEP_W / 2, y, STEP_W, STEP_H);
   cx.restore();
 
@@ -411,7 +412,8 @@ function drawGameplay() {
       const pb = stepPos(G.steps, G.cur, i - 1);
       if (pb.y < H + 60) drawConnector(p.x, p.y, pb.x, pb.y);
     }
-    drawStep(p.x, p.y, i === G.cur, G.steps[i].hasItem, G.steps[i].taken);
+    const needsTurn = i === G.cur + 1 && G.steps[i].dir !== G.facing;
+    drawStep(p.x, p.y, i === G.cur, G.steps[i].hasItem, G.steps[i].taken, needsTurn);
   }
 
   drawPlayer();
