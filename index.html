@@ -27,7 +27,7 @@ canvas { display: block; }
 // ─── Canvas Setup ────────────────────────────────────────────────────────────
 const C = document.getElementById('c');
 const cx = C.getContext('2d');
-const W = 600, H = 750;
+const W = 780, H = 750;
 C.width = W; C.height = H;
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ function nextDir(steps) {
   return Math.random() < 0.5 ? 'left' : 'right';
 }
 function makeStep(steps) {
-  return { dir: nextDir(steps), hasItem: Math.random() < 0.005, taken: false };
+  return { dir: nextDir(steps), hasItem: Math.random() < 0.01, taken: false };
 }
 function ensureSteps(steps, cur) {
   while (steps.length < cur + AHEAD + 5) steps.push(makeStep(steps));
