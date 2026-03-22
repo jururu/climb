@@ -46,7 +46,7 @@ const CX      = W / 2;   // screen center X
 const STEP_Y  = 570;     // Y of current step's top surface
 const STEP_W  = 155;     // step platform width
 const STEP_H  = 13;      // step platform height
-const STEP_DX = 65;      // horizontal offset per step
+const STEP_DX = 120;     // horizontal offset per step
 const STEP_DY = 92;      // vertical distance between steps
 const P_R     = 20;      // pac-man radius
 const AHEAD   = 5;       // steps to show above current
@@ -311,16 +311,6 @@ function drawPlayer() {
   cx.closePath();
   cx.fill();
 
-  // Eye
-  cx.shadowBlur = 0;
-  cx.fillStyle = '#000';
-  cx.beginPath();
-  cx.arc(
-    x + (G.facing === 'right' ? P_R * 0.28 : -P_R * 0.28),
-    y - P_R * 0.32,
-    3, 0, Math.PI * 2
-  );
-  cx.fill();
   cx.restore();
 }
 
@@ -341,6 +331,11 @@ function drawHUD() {
   cx.fillText(`HI-SCORE: ${G.hi}`, 14, 52);
 
   // Lives (pac-man icons)
+  cx.shadowBlur = 0;
+  cx.fillStyle = COL.dim;
+  cx.font = '12px monospace';
+  cx.textAlign = 'right';
+  cx.fillText('Life:', W - 18 - 3 * 32 - 6, 33);
   for (let i = 0; i < 3; i++) {
     const lx = W - 18 - i * 32, ly = 28;
     const alive = i < G.lives;
