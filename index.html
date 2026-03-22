@@ -412,8 +412,9 @@ function drawGameplay() {
       const pb = stepPos(G.steps, G.cur, i - 1);
       if (pb.y < H + 60) drawConnector(p.x, p.y, pb.x, pb.y);
     }
-    // needsTurn: simulate facing as player climbs each step sequentially
-    const needsTurn = i > G.cur && G.steps[i].dir !== (i === G.cur + 1 ? G.facing : G.steps[i - 1].dir);
+    // needsTurn: orange if, while standing on step i, the next step requires TURN
+    const facingOnStep = i === G.cur ? G.facing : G.steps[i].dir;
+    const needsTurn = i >= G.cur && G.steps[i + 1] && G.steps[i + 1].dir !== facingOnStep;
     drawStep(p.x, p.y, i === G.cur, G.steps[i].hasItem, G.steps[i].taken, needsTurn);
   }
 
