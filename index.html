@@ -383,10 +383,10 @@ function drawHUD() {
   const hintY = H - 20;
   cx.fillStyle = key1Correct ? COL.bright : COL.dim;
   cx.textAlign = 'right';
-  cx.fillText('[Z/A/←] SAME DIR', W / 2 - 5, hintY);
+  cx.fillText('[Z/A/← /SPC] SAME', W / 2 - 5, hintY);
   cx.fillStyle = key1Correct ? COL.dim : COL.bright;
   cx.textAlign = 'left';
-  cx.fillText('[X/D/→] TURN', W / 2 + 5, hintY);
+  cx.fillText('[X/D/→/CTRL] TURN', W / 2 + 5, hintY);
 
   cx.restore();
 }
@@ -432,7 +432,7 @@ function drawTitle() {
   cx.shadowBlur = 0;
   cx.fillStyle = COL.green;
   cx.font = '14px monospace';
-  cx.fillText('[Z/A/←] SAME DIR   [X/D/→] TURN & CLIMB', CX, 392);
+  cx.fillText('[Z/A/← /SPC] SAME DIR   [X/D/→/CTRL] TURN', CX, 392);
   cx.fillText('3 LIVES  •  TIME LIMIT SHRINKS PER STEP', CX, 415);
 
   const hi = localStorage.getItem('matrixClimbHi') || '0';
@@ -501,8 +501,8 @@ let inputCooldown = false;
 document.addEventListener('keydown', e => {
   initAudio();
 
-  const k1 = ['KeyZ', 'KeyA', 'ArrowLeft',  'ShiftLeft'].includes(e.code);
-  const k2 = ['KeyX', 'KeyD', 'ArrowRight', 'ShiftRight', 'Space'].includes(e.code);
+  const k1 = ['KeyZ', 'KeyA', 'ArrowLeft',  'ShiftLeft',  'Space'].includes(e.code);
+  const k2 = ['KeyX', 'KeyD', 'ArrowRight', 'ShiftRight', 'ControlLeft', 'ControlRight'].includes(e.code);
   const any = k1 || k2 || e.code === 'Enter';
 
   if (!G) {
