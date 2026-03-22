@@ -18,6 +18,7 @@ body {
 }
 canvas { display: block; }
 #toggleOrange {
+  display: block;
   margin-top: 10px;
   padding: 6px 18px;
   background: #001a08;
@@ -575,6 +576,8 @@ function loop(t) {
 
   updateRain(dt);
   drawRain();
+
+  btn.style.display = !G ? 'block' : 'none';
 
   if (!G) {
     drawTitle();
