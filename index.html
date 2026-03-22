@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MATRIX CLIMB</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: monospace;
+  overflow: hidden;
+}
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+
+// ─── Canvas Setup ────────────────────────────────────────────────────────────
+const C = document.getElementById('c');
+const cx = C.getContext('2d');
+const W = 600, H = 750;
+C.width = W; C.height = H;
+
+// ─── Colors ──────────────────────────────────────────────────────────────────
+const COL = {
+  bg:     '#000000',
+  green:  '#00ff41',
+  bright: '#39ff14',
+  dim:    '#004d18',
+  dark:   '#001a08',
+  red:    '#ff0040',
+  yellow: '#ffe000',
+};
+
+// ─── Layout ──────────────────────────────────────────────────────────────────
+const CX      = W / 2;   // screen center X
+const STEP_Y  = 570;     // Y of current step's top surface
+const STEP_W  = 155;     // step platform width
+const STEP_H  = 13;      // step platform height
+const STEP_DX = 65;      // horizontal offset per step
+const STEP_DY = 92;      // vertical distance between steps
+const P_R     = 20;      // pac-man radius
+const AHEAD   = 5;       // steps to show above current
+const BEHIND  = 1;       // steps to show below current
+
+// ─── Audio ───────────────────────────────────────────────────────────────────
+let aud = null;
+function initAudio() {
+  if (!aud) aud = new (window.AudioContext || window.webkitAudioContext)();
+}
+function beep(freq, dur, type = 'square', vol = 0.25) {
+  if (!aud) return;
+  const o = aud.createOscillator(), g = aud.createGain();
+  o.connect(g); g.connect(aud.destination);
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, aud.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, aud.currentTime + dur);
+  o.start(); o.stop(aud.currentTime + dur);
+}
+const sfx = {
+  a:    () => beep(520, 0.07),
+  b:    () => beep(380, 0.07),
+  hurt: () => beep(110, 0.28, 'sawtooth', 0.35),
+  item: () => { beep(900, 0.1, 'sine', 0.3); setTimeout(() => beep(1200, 0.12, 'sine', 0.3), 80); },
+  dead: () => [200, 155, 110].forEach((f, i) => setTimeout(() => beep(f, 0.22, 'sawtooth', 0.35), i * 140)),
+  hi:   () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.12), i * 90)),
+};
+
+// ─── Matrix Rain ─────────────────────────────────────────────────────────────
+const KANA = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ0123456789ABCDEF日月火水木金';
+const RAIN_W = 18;
+const rain = Array.from({ length: Math.ceil(W / RAIN_W) }, (_, i) => ({
+  x: i * RAIN_W,
+  y: Math.random() * H,
+  spd: 1.5 + Math.random() * 2.5,
+  ch: '',
+}));
+function updateRain(dt) {
+  for (const r of rain) {
+    r.y += r.spd * dt * 60;
+    if (r.y > H + 20) { r.y = -20; r.spd = 1.5 + Math.random() * 2.5; }
+    r.ch = KANA[Math.floor(Math.random() * KANA.length)];
+  }
+}
+function drawRain() {
+  cx.font = '13px monospace';
+  cx.textAlign = 'left';
+  for (const r of rain) {
+    cx.fillStyle = COL.dark;
+    cx.fillText(r.ch, r.x, r.y);
+    cx.fillStyle = '#003010';
+    cx.fillText(r.ch, r.x, r.y - RAIN_W);
+  }
+}
+
+// ─── Step Generation ─────────────────────────────────────────────────────────
+// steps[i].dir = 'left'|'right': direction from step i-1 to step i
+// steps[0].dir is a dummy (starting platform)
+function nextDir(steps) {
+  if (steps.length <= 1) return Math.random() < 0.5 ? 'left' : 'right';
+  const last = steps[steps.length - 1].dir;
+  let run = 0;
+  for (let i = steps.length - 1; i >= 1; i--) {
+    if (steps[i].dir === last) run++;
+    else break;
+  }
+  if (run >= 10) return last === 'left' ? 'right' : 'left';
+  return Math.random() < 0.5 ? 'left' : 'right';
+}
+function makeStep(steps) {
+  return { dir: nextDir(steps), hasItem: Math.random() < 0.005, taken: false };
+}
+function ensureSteps(steps, cur) {
+  while (steps.length < cur + AHEAD + 5) steps.push(makeStep(steps));
+}
+
+// Compute screen position of step[idx] when step[cur] is at (CX, STEP_Y)
+function stepPos(steps, cur, idx) {
+  let x = CX, y = STEP_Y;
+  if (idx > cur) {
+    for (let i = cur + 1; i <= idx; i++) {
+      x += steps[i].dir === 'right' ? STEP_DX : -STEP_DX;
+      y -= STEP_DY;
+    }
+  } else if (idx < cur) {
+    for (let i = cur; i > idx; i--) {
+      x -= steps[i].dir === 'right' ? STEP_DX : -STEP_DX;
+      y += STEP_DY;
+    }
+  }
+  return { x, y };
+}
+
+// Time limit per step based on score
+function timeLimit(score) {
+  return Math.max(0.25, 5.0 - score * 0.01);
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function spawnParticles(parts, x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = 1 + Math.random() * 3;
+    parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 2, life: 1, color });
+  }
+}
+function updateParticles(parts, dt) {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.life -= dt * 2.2;
+    if (p.life <= 0) parts.splice(i, 1);
+  }
+}
+function drawParticles(parts) {
+  cx.save();
+  for (const p of parts) {
+    cx.globalAlpha = Math.max(0, p.life);
+    cx.fillStyle = p.color;
+    cx.shadowColor = p.color;
+    cx.shadowBlur = 6;
+    cx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  cx.globalAlpha = 1;
+  cx.shadowBlur = 0;
+  cx.restore();
+}
+
+// ─── Game State ──────────────────────────────────────────────────────────────
+let G = null; // null = title screen
+
+function newGame() {
+  const steps = [];
+  steps.push({ dir: 'right', hasItem: false, taken: false }); // step 0 (base)
+  for (let i = 0; i < 25; i++) steps.push(makeStep(steps));
+
+  G = {
+    steps,
+    cur: 0,
+    facing: steps[1].dir,   // face toward first step
+    lives: 3,
+    score: 0,
+    hi: +localStorage.getItem('matrixClimbHi') || 0,
+    timeLeft: 5.0,
+    timMax: 5.0,
+    isNewHi: false,
+    hurt: 0,                 // countdown for damage flash
+    particles: [],
+    over: false,
+  };
+}
+
+function doClimb(key1) {
+  if (!G || G.over) return;
+
+  ensureSteps(G.steps, G.cur);
+  const nextDir = G.steps[G.cur + 1].dir;
+  // key1 = continue in facing direction; key2 = turn and go
+  const moveDir = key1 ? G.facing : (G.facing === 'left' ? 'right' : 'left');
+
+  if (moveDir === nextDir) {
+    // ─ Success ─
+    if (key1) sfx.a(); else sfx.b();
+    G.facing = moveDir;
+    G.cur++;
+    G.score = G.cur;
+
+    // Item?
+    const s = G.steps[G.cur];
+    if (s.hasItem && !s.taken) {
+      s.taken = true;
+      if (G.lives < 3) { G.lives++; }
+      sfx.item();
+      spawnParticles(G.particles, CX, STEP_Y - P_R * 2, COL.yellow, 14);
+    }
+
+    // Reset timer
+    G.timMax = timeLimit(G.score);
+    G.timeLeft = G.timMax;
+    spawnParticles(G.particles, CX, STEP_Y, COL.green, 5);
+    ensureSteps(G.steps, G.cur);
+  } else {
+    // ─ Miss ─
+    sfx.hurt();
+    G.lives--;
+    G.hurt = 0.5;
+    spawnParticles(G.particles, CX, STEP_Y - P_R, COL.red, 10);
+    if (G.lives <= 0) triggerGameOver();
+  }
+}
+
+function triggerGameOver() {
+  G.over = true;
+  sfx.dead();
+  if (G.score > G.hi) {
+    G.hi = G.score;
+    G.isNewHi = true;
+    localStorage.setItem('matrixClimbHi', G.score);
+    setTimeout(sfx.hi, 500);
+  }
+}
+
+// ─── Draw Functions ───────────────────────────────────────────────────────────
+function drawStep(x, y, isCurrent, hasItem, taken) {
+  const col = isCurrent ? COL.bright : COL.green;
+  cx.save();
+  cx.shadowColor = col;
+  cx.shadowBlur = isCurrent ? 22 : 7;
+  cx.fillStyle = isCurrent ? COL.dim : COL.dark;
+  cx.fillRect(x - STEP_W / 2, y, STEP_W, STEP_H);
+  cx.strokeStyle = col;
+  cx.lineWidth = isCurrent ? 2 : 1;
+  cx.strokeRect(x - STEP_W / 2, y, STEP_W, STEP_H);
+  cx.restore();
+
+  // Item bubble
+  if (hasItem && !taken) {
+    cx.save();
+    cx.shadowColor = COL.yellow;
+    cx.shadowBlur = 14;
+    cx.fillStyle = COL.yellow;
+    cx.beginPath();
+    cx.arc(x, y - 14, 8, 0, Math.PI * 2);
+    cx.fill();
+    cx.fillStyle = '#000';
+    cx.font = 'bold 11px monospace';
+    cx.textAlign = 'center';
+    cx.fillText('♥', x, y - 10);
+    cx.restore();
+  }
+}
+
+function drawConnector(x1, y1, x2, y2) {
+  cx.save();
+  cx.strokeStyle = '#002208';
+  cx.lineWidth = 1;
+  cx.setLineDash([3, 7]);
+  cx.beginPath();
+  cx.moveTo(x1, y1 + STEP_H);
+  cx.lineTo(x2, y2);
+  cx.stroke();
+  cx.setLineDash([]);
+  cx.restore();
+}
+
+function drawPlayer() {
+  const x = CX, y = STEP_Y - P_R;
+  const col = G.hurt > 0 ? COL.red : COL.green;
+  const mouth = Math.PI * 0.27;
+
+  cx.save();
+  cx.shadowColor = col;
+  cx.shadowBlur = 22;
+  cx.fillStyle = col;
+
+  let a1, a2;
+  if (G.facing === 'right') { a1 = mouth; a2 = 2 * Math.PI - mouth; }
+  else                       { a1 = Math.PI + mouth; a2 = Math.PI - mouth; }
+
+  cx.beginPath();
+  cx.moveTo(x, y);
+  cx.arc(x, y, P_R, a1, a2);
+  cx.closePath();
+  cx.fill();
+
+  // Eye
+  cx.shadowBlur = 0;
+  cx.fillStyle = '#000';
+  cx.beginPath();
+  cx.arc(
+    x + (G.facing === 'right' ? P_R * 0.28 : -P_R * 0.28),
+    y - P_R * 0.32,
+    3, 0, Math.PI * 2
+  );
+  cx.fill();
+  cx.restore();
+}
+
+function drawHUD() {
+  cx.save();
+
+  // Score
+  cx.shadowColor = COL.green;
+  cx.shadowBlur = 10;
+  cx.fillStyle = COL.green;
+  cx.font = 'bold 21px monospace';
+  cx.textAlign = 'left';
+  cx.fillText(`HEIGHT: ${G.score}`, 14, 33);
+
+  cx.shadowBlur = 0;
+  cx.fillStyle = COL.dim;
+  cx.font = '12px monospace';
+  cx.fillText(`HI-SCORE: ${G.hi}`, 14, 52);
+
+  // Lives (pac-man icons)
+  for (let i = 0; i < 3; i++) {
+    const lx = W - 18 - i * 32, ly = 28;
+    const alive = i < G.lives;
+    cx.shadowColor = alive ? COL.green : COL.dark;
+    cx.shadowBlur = alive ? 8 : 0;
+    cx.fillStyle = alive ? COL.green : '#001a08';
+    cx.beginPath();
+    cx.moveTo(lx, ly);
+    cx.arc(lx, ly, 11, 0.3, 2 * Math.PI - 0.3);
+    cx.closePath();
+    cx.fill();
+  }
+
+  // Timer bar
+  const bx = 14, by = H - 58, bw = W - 28, bh = 10;
+  const ratio = Math.max(0, G.timeLeft / G.timMax);
+  const barCol = ratio > 0.5 ? COL.green : ratio > 0.25 ? COL.yellow : COL.red;
+
+  cx.shadowBlur = 0;
+  cx.fillStyle = COL.dark;
+  cx.fillRect(bx, by, bw, bh);
+  cx.shadowColor = barCol;
+  cx.shadowBlur = 8;
+  cx.fillStyle = barCol;
+  cx.fillRect(bx, by, bw * ratio, bh);
+  cx.shadowBlur = 0;
+  cx.strokeStyle = COL.dim;
+  cx.lineWidth = 1;
+  cx.strokeRect(bx, by, bw, bh);
+
+  cx.fillStyle = COL.dim;
+  cx.font = '11px monospace';
+  cx.textAlign = 'center';
+  cx.fillText(`${G.timeLeft.toFixed(2)}s`, W / 2, by - 5);
+
+  // Control hints (context-sensitive highlight)
+  const nextDir2 = G.steps[G.cur + 1]?.dir;
+  const key1Correct = nextDir2 === G.facing;
+  cx.font = '11px monospace';
+  const hintY = H - 20;
+  cx.fillStyle = key1Correct ? COL.bright : COL.dim;
+  cx.textAlign = 'right';
+  cx.fillText('[Z/A/←] SAME DIR', W / 2 - 5, hintY);
+  cx.fillStyle = key1Correct ? COL.dim : COL.bright;
+  cx.textAlign = 'left';
+  cx.fillText('[X/D/→] TURN', W / 2 + 5, hintY);
+
+  cx.restore();
+}
+
+function drawGameplay() {
+  ensureSteps(G.steps, G.cur);
+
+  // Draw from furthest to nearest (painter's order)
+  for (let i = G.cur + AHEAD; i >= G.cur - BEHIND; i--) {
+    if (i < 0 || i >= G.steps.length) continue;
+    const p = stepPos(G.steps, G.cur, i);
+    if (p.y < -60 || p.y > H + 60) continue;
+
+    // Connector to step below
+    if (i > 0) {
+      const pb = stepPos(G.steps, G.cur, i - 1);
+      if (pb.y < H + 60) drawConnector(p.x, p.y, pb.x, pb.y);
+    }
+    drawStep(p.x, p.y, i === G.cur, G.steps[i].hasItem, G.steps[i].taken);
+  }
+
+  drawPlayer();
+  drawParticles(G.particles);
+  drawHUD();
+}
+
+function drawTitle() {
+  cx.save();
+  cx.textAlign = 'center';
+
+  cx.shadowColor = COL.green;
+  cx.shadowBlur = 50;
+  cx.fillStyle = COL.green;
+  cx.font = 'bold 58px monospace';
+  cx.fillText('MATRIX', CX, 255);
+  cx.fillText('CLIMB', CX, 318);
+
+  cx.shadowBlur = 3;
+  cx.fillStyle = COL.dim;
+  cx.font = '12px monospace';
+  cx.fillText('──────────────────────────────────', CX, 355);
+
+  cx.shadowBlur = 0;
+  cx.fillStyle = COL.green;
+  cx.font = '14px monospace';
+  cx.fillText('[Z/A/←] SAME DIR   [X/D/→] TURN & CLIMB', CX, 392);
+  cx.fillText('3 LIVES  •  TIME LIMIT SHRINKS PER STEP', CX, 415);
+
+  const hi = localStorage.getItem('matrixClimbHi') || '0';
+  cx.shadowColor = COL.bright;
+  cx.shadowBlur = 18;
+  cx.fillStyle = COL.bright;
+  cx.font = 'bold 19px monospace';
+  cx.fillText(`HI-SCORE: ${hi}`, CX, 460);
+
+  if (Math.floor(Date.now() / 600) % 2 === 0) {
+    cx.shadowBlur = 15;
+    cx.fillStyle = COL.green;
+    cx.font = '17px monospace';
+    cx.fillText('PRESS ANY KEY TO START', CX, 510);
+  }
+
+  cx.restore();
+}
+
+function drawGameOver() {
+  // Dark overlay
+  cx.fillStyle = 'rgba(0,0,0,0.75)';
+  cx.fillRect(0, 0, W, H);
+
+  cx.save();
+  cx.textAlign = 'center';
+
+  cx.shadowColor = COL.red;
+  cx.shadowBlur = 35;
+  cx.fillStyle = COL.red;
+  cx.font = 'bold 46px monospace';
+  cx.fillText('GAME OVER', CX, H / 2 - 70);
+
+  cx.shadowColor = COL.green;
+  cx.shadowBlur = 12;
+  cx.fillStyle = COL.green;
+  cx.font = 'bold 28px monospace';
+  cx.fillText(`HEIGHT: ${G.score}`, CX, H / 2 - 8);
+
+  if (G.isNewHi && Math.floor(Date.now() / 350) % 2 === 0) {
+    cx.shadowColor = COL.yellow;
+    cx.shadowBlur = 28;
+    cx.fillStyle = COL.yellow;
+    cx.font = 'bold 19px monospace';
+    cx.fillText('★ NEW HIGH SCORE! ★', CX, H / 2 + 35);
+  }
+
+  cx.shadowBlur = 0;
+  cx.fillStyle = COL.dim;
+  cx.font = '14px monospace';
+  cx.fillText(`HI-SCORE: ${G.hi}`, CX, H / 2 + 70);
+
+  if (Math.floor(Date.now() / 600) % 2 === 0) {
+    cx.shadowColor = COL.green;
+    cx.shadowBlur = 10;
+    cx.fillStyle = COL.green;
+    cx.font = '16px monospace';
+    cx.fillText('PRESS ANY KEY TO RETRY', CX, H / 2 + 112);
+  }
+
+  cx.restore();
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+let inputCooldown = false;
+document.addEventListener('keydown', e => {
+  initAudio();
+
+  const k1 = ['KeyZ', 'KeyA', 'ArrowLeft',  'ShiftLeft'].includes(e.code);
+  const k2 = ['KeyX', 'KeyD', 'ArrowRight', 'ShiftRight', 'Space'].includes(e.code);
+  const any = k1 || k2 || e.code === 'Enter';
+
+  if (!G) {
+    if (any) newGame();
+    return;
+  }
+  if (G.over) {
+    if (any) newGame();
+    return;
+  }
+  if (!k1 && !k2) return;
+  if (inputCooldown) return;
+
+  inputCooldown = true;
+  setTimeout(() => { inputCooldown = false; }, 75);
+  doClimb(k1);
+});
+
+// ─── Main Loop ────────────────────────────────────────────────────────────────
+let lastT = 0;
+function loop(t) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((t - lastT) / 1000, 0.1);
+  lastT = t;
+
+  cx.fillStyle = COL.bg;
+  cx.fillRect(0, 0, W, H);
+
+  updateRain(dt);
+  drawRain();
+
+  if (!G) {
+    drawTitle();
+    return;
+  }
+
+  if (!G.over) {
+    G.timeLeft -= dt;
+    if (G.timeLeft <= 0) { G.timeLeft = 0; triggerGameOver(); }
+    if (G.hurt > 0) G.hurt -= dt;
+    updateParticles(G.particles, dt);
+  } else {
+    updateParticles(G.particles, dt);
+  }
+
+  drawGameplay();
+  if (G.over) drawGameOver();
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
